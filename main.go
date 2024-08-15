@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"github.com/Frozelo/FeedBackManagerBot/fetcher"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
@@ -27,11 +28,17 @@ func main() {
 
 	updates := botAPI.GetUpdatesChan(u)
 
-	rssFetcher := fetcher.NewFetcher(2*time.Second, []string{"test", "hey"})
+	rssFetcher := fetcher.NewFetcher(1*time.Minute, []string{"test", "hey"})
 
-	if err = rssFetcher.Fetch(ctx); err != nil {
-		log.Printf("some error %s", err)
-	}
+	go func(ctx context.Context) {
+		if err = rssFetcher.Start(ctx); err != nil {
+			if !errors.Is(err, context.Canceled) {
+				log.Printf("Error starting fetcher: %v", err)
+				return
+			}
+			log.Printf("[INFO] fetcher stopped")
+		}
+	}(ctx)
 
 	for update := range updates {
 		if update.Message != nil {
