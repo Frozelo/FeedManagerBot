@@ -23,6 +23,7 @@ type Article struct {
 	ID          int64
 	SourceID    int64
 	Title       string
+	Categories  []string
 	Link        string
 	Summary     string
 	PublishedAt time.Time
