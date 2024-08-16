@@ -2,7 +2,6 @@ package fetcher
 
 import (
 	"context"
-	"fmt"
 	"github.com/Frozelo/FeedBackManagerBot/internal/model"
 	"github.com/Frozelo/FeedBackManagerBot/internal/rss"
 	"log"
@@ -10,17 +9,22 @@ import (
 	"time"
 )
 
+type ArticleRepo interface {
+	Add(ctx context.Context, article models.Article) error
+}
+
 type Sourcer interface {
 	Fetch(ctx context.Context) (*[]models.Item, error)
 }
 
 type Fetcher struct {
+	articleRepo    ArticleRepo
 	fetchInterval  time.Duration
 	filterKeywords []string
 }
 
-func NewFetcher(interval time.Duration, filterKeywords []string) *Fetcher {
-	return &Fetcher{fetchInterval: interval, filterKeywords: filterKeywords}
+func NewFetcher(articleRepo ArticleRepo, interval time.Duration, filterKeywords []string) *Fetcher {
+	return &Fetcher{articleRepo: articleRepo, fetchInterval: interval, filterKeywords: filterKeywords}
 }
 
 func (f *Fetcher) Start(ctx context.Context) error {
@@ -75,12 +79,14 @@ func (f *Fetcher) processItems(ctx context.Context, items *[]models.Item) error 
 
 		article := models.Article{
 			Title:       item.Title,
+			SourceID:    1,
 			Link:        item.Link,
 			Categories:  item.Categories,
-			Summary:     item.Summary,
 			PublishedAt: item.Date,
 		}
-		fmt.Println(article)
+		if err := f.articleRepo.Add(ctx, article); err != nil {
+			return err
+		}
 	}
 
 	return nil

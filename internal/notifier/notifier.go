@@ -15,16 +15,21 @@ type UserRepo interface {
 	AddTgUser(ctx context.Context, tgUser models.TgUser) error
 }
 
-type Notifier struct {
-	bot          *tgbotapi.BotAPI
-	sendInterval time.Duration
-	channelId    int64
-	userRepo     UserRepo
-	articles     []models.Article
+type ArticleRepo interface {
+	MarkAsPosted(ctx context.Context, article models.Article) error
+	GetAllNotPosted(ctx context.Context) ([]models.Article, error)
+	GetAll(ctx context.Context) ([]models.Article, error)
 }
 
-func NewNotifier(bot *tgbotapi.BotAPI, sendInterval time.Duration, userRepo UserRepo, articles []models.Article) *Notifier {
-	return &Notifier{bot: bot, sendInterval: sendInterval, userRepo: userRepo, articles: articles}
+type Notifier struct {
+	bot          *tgbotapi.BotAPI
+	articleRepo  ArticleRepo
+	userRepo     UserRepo
+	sendInterval time.Duration
+}
+
+func NewNotifier(bot *tgbotapi.BotAPI, userRepo UserRepo, articles ArticleRepo, sendInterval time.Duration) *Notifier {
+	return &Notifier{bot: bot, userRepo: userRepo, articleRepo: articles, sendInterval: sendInterval}
 }
 
 func (n *Notifier) Start(ctx context.Context) error {
@@ -48,11 +53,12 @@ func (n *Notifier) Start(ctx context.Context) error {
 }
 
 func (n *Notifier) Notify(ctx context.Context) error {
-	if len(n.articles) == 0 {
-		return nil
+	articles, err := n.articleRepo.GetAllNotPosted(ctx)
+	if err != nil {
+		return err
 	}
-	articleToSend := n.articles[0]
-	if err := n.Send(ctx, articleToSend); err != nil {
+	articleToSend := articles[0]
+	if err = n.Send(ctx, articleToSend); err != nil {
 		return err
 	}
 	return nil
@@ -67,21 +73,34 @@ func (n *Notifier) Send(ctx context.Context, article models.Article) error {
 	}
 
 	msg := fmt.Sprintf(
+		"*Title:* %s\n*Link:* [%s](%s)\n*Published At:* %s",
 		article.Title,
+		article.Title, // Здесь можно использовать другое значение, если нужно
+		article.Link,
+		article.PublishedAt.Format("2006-01-02 15:04:05"), // Форматирование даты
 	)
+
 	for _, subscriber := range subscribers {
 		wg.Add(1)
 		go func(userId int64) {
 			defer wg.Done()
 			log.Printf("Sending message to user %d", userId)
 			telegramMsg := tgbotapi.NewMessage(userId, msg)
+			telegramMsg.ParseMode = "Markdown"
 			if _, err := n.bot.Send(telegramMsg); err != nil {
 				log.Printf("[ERROR] failed to send message to user with such %v id", userId)
 				log.Printf("[ERROR] %s", err.Error())
 			}
 		}(subscriber.TgId)
 	}
-	wg.Wait()
-	return nil
 
+	wg.Wait()
+
+	// После успешной отправки всем пользователям, помечаем статью как отправленную
+	if err := n.articleRepo.MarkAsPosted(ctx, article); err != nil {
+		log.Printf("[ERROR] failed to mark article as posted: %s", err.Error())
+		return err
+	}
+
+	return nil
 }

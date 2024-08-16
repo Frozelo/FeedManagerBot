@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/Frozelo/FeedBackManagerBot/internal/config"
 	"github.com/Frozelo/FeedBackManagerBot/internal/fetcher"
-	"github.com/Frozelo/FeedBackManagerBot/internal/model"
+	models "github.com/Frozelo/FeedBackManagerBot/internal/model"
 	"github.com/Frozelo/FeedBackManagerBot/internal/notifier"
 	"github.com/Frozelo/FeedBackManagerBot/internal/repository"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -51,15 +51,13 @@ func main() {
 	}
 
 	userRepo := repository.NewUsersRepository(db)
-	rssFetcher := fetcher.NewFetcher(1*time.Minute, []string{"test", "hey"})
+	articleRepo := repository.NewArticleRepository(db)
+	rssFetcher := fetcher.NewFetcher(articleRepo, 1*time.Minute, []string{"test", "hey"})
 	ntfr := notifier.NewNotifier(
 		botAPI,
-		10*time.Minute,
 		userRepo,
-		[]models.Article{
-			{ID: 1, SourceID: 1, Title: "TestTitle1", Link: "TestLink1"},
-			{ID: 2, SourceID: 1, Title: "TestTitle2", Link: "TestLink2"},
-			{ID: 3, SourceID: 1, Title: "TestTitle3", Link: "TestLink3"}},
+		articleRepo,
+		15*time.Second,
 	)
 
 	go func(ctx context.Context) {
@@ -86,7 +84,7 @@ func main() {
 		select {
 		case update := <-updates:
 			updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			handleUpdate(updateCtx, update, botAPI)
+			handleUpdate(updateCtx, update, botAPI, userRepo)
 			updateCancel()
 		case <-ctx.Done():
 			return
@@ -95,10 +93,17 @@ func main() {
 }
 
 // TODO Solve update problem. With true handling
-func handleUpdate(ctx context.Context, update tgbotapi.Update, bot *tgbotapi.BotAPI) {
+func handleUpdate(ctx context.Context, update tgbotapi.Update, bot *tgbotapi.BotAPI, userRepo *repository.UsersRepository) {
 	msg := tgbotapi.NewMessage(747067942, fmt.Sprintf("Got the new message from %v", update.Message.From.ID))
-	bot.Send(msg)
+	if err := userRepo.AddTgUser(ctx, models.TgUser{
+		TgId:     update.Message.From.ID,
+		Username: update.Message.From.UserName,
+	}); err != nil {
+		msg = tgbotapi.NewMessage(update.Message.From.ID, fmt.Sprintf("Error adding user: %v", err))
+		bot.Send(msg)
+	}
 
+	bot.Send(msg)
 	defer func() {
 		if p := recover(); p != nil {
 			log.Printf("[ERROR] panic recovered: %v\n%s", p, string(debug.Stack()))
