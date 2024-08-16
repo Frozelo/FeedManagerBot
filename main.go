@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Frozelo/FeedBackManagerBot/fetcher"
-	models "github.com/Frozelo/FeedBackManagerBot/model"
-	"github.com/Frozelo/FeedBackManagerBot/notifier"
+	"github.com/Frozelo/FeedBackManagerBot/internal/config"
+	"github.com/Frozelo/FeedBackManagerBot/internal/fetcher"
+	"github.com/Frozelo/FeedBackManagerBot/internal/model"
+	"github.com/Frozelo/FeedBackManagerBot/internal/notifier"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
 	"os"
@@ -17,8 +18,16 @@ import (
 	"time"
 )
 
+const cfgPath = "internal/config/config.yaml"
+
 func main() {
-	botAPI, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
+	cfg, err := config.New(cfgPath)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	botAPI, err := tgbotapi.NewBotAPI(cfg.TelegramBot.Token)
 
 	if err != nil {
 		log.Panic(err)

@@ -3,7 +3,7 @@ package notifier
 import (
 	"context"
 	"fmt"
-	models "github.com/Frozelo/FeedBackManagerBot/model"
+	"github.com/Frozelo/FeedBackManagerBot/internal/model"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
 	"sync"

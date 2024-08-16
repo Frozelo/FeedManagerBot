@@ -2,7 +2,7 @@ package rss
 
 import (
 	"context"
-	models "github.com/Frozelo/FeedBackManagerBot/model"
+	"github.com/Frozelo/FeedBackManagerBot/internal/model"
 	"github.com/SlyMarbo/rss"
 	"log"
 )

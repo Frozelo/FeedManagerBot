@@ -3,8 +3,8 @@ package fetcher
 import (
 	"context"
 	"fmt"
-	models "github.com/Frozelo/FeedBackManagerBot/model"
-	"github.com/Frozelo/FeedBackManagerBot/rss"
+	"github.com/Frozelo/FeedBackManagerBot/internal/model"
+	"github.com/Frozelo/FeedBackManagerBot/internal/rss"
 	"log"
 	"sync"
 	"time"
