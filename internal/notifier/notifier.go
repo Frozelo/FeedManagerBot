@@ -10,17 +10,21 @@ import (
 	"time"
 )
 
+type UserRepo interface {
+	GetAllUsers(ctx context.Context) ([]models.TgUser, error)
+	AddTgUser(ctx context.Context, tgUser models.TgUser) error
+}
+
 type Notifier struct {
 	bot          *tgbotapi.BotAPI
 	sendInterval time.Duration
 	channelId    int64
-	// TODO add tgUser repository
-	subscribers []int64
-	articles    []models.Article
+	userRepo     UserRepo
+	articles     []models.Article
 }
 
-func NewNotifier(bot *tgbotapi.BotAPI, sendInterval time.Duration, subscribers []int64, articles []models.Article) *Notifier {
-	return &Notifier{bot: bot, sendInterval: sendInterval, subscribers: subscribers, articles: articles}
+func NewNotifier(bot *tgbotapi.BotAPI, sendInterval time.Duration, userRepo UserRepo, articles []models.Article) *Notifier {
+	return &Notifier{bot: bot, sendInterval: sendInterval, userRepo: userRepo, articles: articles}
 }
 
 func (n *Notifier) Start(ctx context.Context) error {
@@ -48,19 +52,24 @@ func (n *Notifier) Notify(ctx context.Context) error {
 		return nil
 	}
 	articleToSend := n.articles[0]
-	if err := n.Send(articleToSend); err != nil {
+	if err := n.Send(ctx, articleToSend); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (n *Notifier) Send(article models.Article) error {
+func (n *Notifier) Send(ctx context.Context, article models.Article) error {
 	var wg sync.WaitGroup
+	subscribers, err := n.userRepo.GetAllUsers(ctx)
+	log.Printf("subscribers: %v", subscribers)
+	if err != nil {
+		return err
+	}
 
 	msg := fmt.Sprintf(
 		article.Title,
 	)
-	for _, userId := range n.subscribers {
+	for _, subscriber := range subscribers {
 		wg.Add(1)
 		go func(userId int64) {
 			defer wg.Done()
@@ -70,7 +79,7 @@ func (n *Notifier) Send(article models.Article) error {
 				log.Printf("[ERROR] failed to send message to user with such %v id", userId)
 				log.Printf("[ERROR] %s", err.Error())
 			}
-		}(userId)
+		}(subscriber.TgId)
 	}
 	wg.Wait()
 	return nil

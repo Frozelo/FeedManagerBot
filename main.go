@@ -8,12 +8,12 @@ import (
 	"github.com/Frozelo/FeedBackManagerBot/internal/fetcher"
 	"github.com/Frozelo/FeedBackManagerBot/internal/model"
 	"github.com/Frozelo/FeedBackManagerBot/internal/notifier"
+	"github.com/Frozelo/FeedBackManagerBot/internal/repository"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
-	"os"
 	"os/signal"
 	"runtime/debug"
-	"strconv"
 	"syscall"
 	"time"
 )
@@ -32,22 +32,30 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
-	log.Printf("Authorized on account %s", botAPI.Self.UserName)
+	log.Printf("Connected to the database")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
 	updates := botAPI.GetUpdatesChan(u)
 
-	testId, err := strconv.ParseInt(os.Getenv("TEST_ID"), 10, 64)
+	db, err := pgxpool.New(ctx, "postgres://admin:123123@localhost:5432/feedbot")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	userRepo := repository.NewUsersRepository(db)
 	rssFetcher := fetcher.NewFetcher(1*time.Minute, []string{"test", "hey"})
 	ntfr := notifier.NewNotifier(
 		botAPI,
 		10*time.Minute,
-		[]int64{testId},
+		userRepo,
 		[]models.Article{
 			{ID: 1, SourceID: 1, Title: "TestTitle1", Link: "TestLink1"},
 			{ID: 2, SourceID: 1, Title: "TestTitle2", Link: "TestLink2"},
@@ -90,6 +98,7 @@ func main() {
 func handleUpdate(ctx context.Context, update tgbotapi.Update, bot *tgbotapi.BotAPI) {
 	msg := tgbotapi.NewMessage(747067942, fmt.Sprintf("Got the new message from %v", update.Message.From.ID))
 	bot.Send(msg)
+
 	defer func() {
 		if p := recover(); p != nil {
 			log.Printf("[ERROR] panic recovered: %v\n%s", p, string(debug.Stack()))

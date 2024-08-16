@@ -30,3 +30,8 @@ type Article struct {
 	PostedAt    time.Time
 	CreatedAt   time.Time
 }
+
+type TgUser struct {
+	TgId     int64
+	Username string
+}
