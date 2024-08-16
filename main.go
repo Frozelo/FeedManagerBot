@@ -37,7 +37,7 @@ func main() {
 	rssFetcher := fetcher.NewFetcher(1*time.Minute, []string{"test", "hey"})
 	ntfr := notifier.NewNotifier(
 		botAPI,
-		10*time.Second,
+		10*time.Minute,
 		[]int64{testId},
 		[]models.Article{
 			{ID: 1, SourceID: 1, Title: "TestTitle1", Link: "TestLink1"},
