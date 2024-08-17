@@ -59,7 +59,7 @@ func main() {
 		userRepo,
 		articleRepo,
 		subsRepo,
-		30*time.Second,
+		5*time.Second,
 	)
 
 	go func(ctx context.Context) {

@@ -17,7 +17,7 @@ type UserRepo interface {
 
 type ArticleRepo interface {
 	MarkAsPosted(ctx context.Context, article models.Article) error
-	GetAllNotPosted(ctx context.Context) ([]models.Article, error)
+	GetAllNotPostedByUserSources(ctx context.Context, userID int64) ([]models.Article, error)
 	GetAll(ctx context.Context) ([]models.Article, error)
 }
 
@@ -57,34 +57,73 @@ func (n *Notifier) Start(ctx context.Context) error {
 	}
 }
 
+// TODO Decompose this method
 func (n *Notifier) Notify(ctx context.Context) error {
-	articles, err := n.articleRepo.GetAllNotPosted(ctx)
-	if err != nil {
-		return err
-	}
-	if len(articles) == 0 {
-		return nil
-	}
-	articleToSend := articles[0]
-
 	subscribers, err := n.userRepo.GetAllUsers(ctx)
 	if err != nil {
 		return err
 	}
+	log.Printf("subscribers: %v", subscribers)
 
-	if err = n.Send(ctx, articleToSend, subscribers); err != nil {
-		return err
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(subscribers))
+
+	for _, subscriber := range subscribers {
+		wg.Add(1)
+
+		go func(userID int64) {
+			defer wg.Done()
+			articles, err := n.articleRepo.GetAllNotPostedByUserSources(ctx, userID)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			if len(articles) == 0 {
+				return
+			}
+			articleToSend := articles[0]
+
+			if err = n.Send(ctx, articleToSend, subscriber); err != nil {
+				errChan <- err
+			}
+		}(subscriber.TgId)
 	}
+
+	wg.Wait()
+	close(errChan)
+
+	var sendErrs []error
+	for err := range errChan {
+		if err != nil {
+			log.Println(err)
+			sendErrs = append(sendErrs, err)
+		}
+	}
+
+	if len(sendErrs) > 0 {
+		return fmt.Errorf("encountered errors during notification: %v", sendErrs)
+	}
+
 	return nil
 }
 
-func (n *Notifier) Send(ctx context.Context, article models.Article, subs []models.TgUser) error {
+func (n *Notifier) Send(ctx context.Context, article models.Article, subscriber models.TgUser) error {
 	msg := n.formatMessage(article)
 
-	sendErrs := n.sendMessagesToAllUsers(ctx, article, subs, msg)
+	err := n.sendMessageToUser(ctx, subscriber.TgId, article, msg)
+	if err != nil {
+		return err
+	}
 
-	if len(sendErrs) > 0 {
-		return fmt.Errorf("encountered errors during message sending: %v", sendErrs)
+	return nil
+}
+
+func (n *Notifier) sendMessageToUser(ctx context.Context, userId int64, article models.Article, msg string) error {
+	telegramMsg := tgbotapi.NewMessage(userId, msg)
+	telegramMsg.ParseMode = "Markdown"
+
+	if _, err := n.bot.Send(telegramMsg); err != nil {
+		return fmt.Errorf("[ERROR] failed to send message to user with id %v: %w", userId, err)
 	}
 
 	if err := n.articleRepo.MarkAsPosted(ctx, article); err != nil {
@@ -103,51 +142,4 @@ func (n *Notifier) formatMessage(article models.Article) string {
 		article.Link,
 		article.PublishedAt.Format("2006-01-02 15:04:05"),
 	)
-}
-
-func (n *Notifier) sendMessagesToAllUsers(ctx context.Context, article models.Article, subs []models.TgUser, msg string) []error {
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(subs))
-
-	for _, subscriber := range subs {
-		wg.Add(1)
-
-		go func(userId int64) {
-			defer wg.Done()
-			n.sendMessageToUser(ctx, userId, article, msg, errChan)
-		}(subscriber.TgId)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	var sendErrs []error
-	for err := range errChan {
-		if err != nil {
-			log.Println(err)
-			sendErrs = append(sendErrs, err)
-		}
-	}
-
-	return sendErrs
-}
-
-func (n *Notifier) sendMessageToUser(ctx context.Context, userId int64, article models.Article, msg string, errChan chan<- error) {
-	userSources, err := n.subsRepo.GetSourcesByUserID(ctx, userId)
-	if err != nil {
-		errChan <- fmt.Errorf("[ERROR] failed to find user subs for user %v id: %w", userId, err)
-		return
-	}
-
-	for _, source := range userSources {
-		if source.ID == article.SourceID {
-			telegramMsg := tgbotapi.NewMessage(userId, msg)
-			telegramMsg.ParseMode = "Markdown"
-
-			if _, err := n.bot.Send(telegramMsg); err != nil {
-				errChan <- fmt.Errorf("[ERROR] failed to send message to user with id %v: %w", userId, err)
-			}
-			break
-		}
-	}
 }

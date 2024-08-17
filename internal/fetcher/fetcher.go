@@ -15,6 +15,7 @@ type ArticleRepo interface {
 
 type Sourcer interface {
 	Fetch(ctx context.Context) (*[]models.Item, error)
+	Id() int64
 }
 
 type Fetcher struct {
@@ -48,7 +49,10 @@ func (f *Fetcher) Start(ctx context.Context) error {
 }
 
 func (f *Fetcher) Fetch(ctx context.Context) error {
-	sources := []models.Source{{ID: 2, Name: "HABR", FeedURL: "https://habr.com/ru/rss/articles/?fl=ru"}}
+	sources := []models.Source{
+		{ID: 1, Name: "HABR", FeedURL: "https://habr.com/ru/rss/articles/?fl=ru"},
+		{ID: 2, Name: "VC RU", FeedURL: "https://vc.ru/rss/all"},
+	}
 	var wg sync.WaitGroup
 
 	for _, source := range sources {
@@ -68,19 +72,19 @@ func (f *Fetcher) fetchSource(ctx context.Context, source models.Source, wg *syn
 		log.Printf("[ERROR] failed to fetch items from source %q: %v", source.Name, err)
 		return
 	}
-	if err := f.processItems(ctx, items); err != nil {
+	if err := f.processItems(ctx, rssSource, items); err != nil {
 		log.Printf("[ERROR] failed to process items from source %q: %v", source.Name, err)
 	}
 }
 
-func (f *Fetcher) processItems(ctx context.Context, items *[]models.Item) error {
+func (f *Fetcher) processItems(ctx context.Context, rssSource Sourcer, items *[]models.Item) error {
 	for _, item := range *items {
 		item.Date = item.Date.UTC()
 
 		article := models.Article{
 			Title: item.Title,
 			// TODO implement source logic
-			SourceID:    1,
+			SourceID:    rssSource.Id(),
 			Link:        item.Link,
 			Categories:  item.Categories,
 			PublishedAt: item.Date,

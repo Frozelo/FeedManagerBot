@@ -8,13 +8,17 @@ import (
 )
 
 type RSS struct {
-	URL  string
-	Id   int64
-	Name string
+	URL      string
+	SourceId int64
+	Name     string
 }
 
 func NewRSS(source models.Source) *RSS {
-	return &RSS{URL: source.FeedURL, Id: source.ID, Name: source.Name}
+	return &RSS{URL: source.FeedURL, SourceId: source.ID, Name: source.Name}
+}
+
+func (r *RSS) Id() int64 {
+	return r.SourceId
 }
 
 func (r *RSS) Fetch(ctx context.Context) (*[]models.Item, error) {

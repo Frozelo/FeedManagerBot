@@ -55,13 +55,19 @@ func (r *ArticleRepository) GetAll(ctx context.Context) ([]models.Article, error
 	return articles, nil
 }
 
-func (r *ArticleRepository) GetAllNotPosted(ctx context.Context) ([]models.Article, error) {
-	query := `SELECT id, source_id, title, link, published_at FROM articles WHERE posted_at IS NULL`
-	rows, err := r.db.Query(ctx, query)
+func (r *ArticleRepository) GetAllNotPostedByUserSources(ctx context.Context, userID int64) ([]models.Article, error) {
+	query := `
+		SELECT a.id, a.source_id, a.title, a.link, a.published_at 
+		FROM articles a
+		JOIN subscriptions s ON a.source_id = s.source_id
+		WHERE a.posted_at IS NULL AND s.user_id = $1
+	`
+	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
 	var articles []models.Article
 	for rows.Next() {
 		var article models.Article
@@ -70,11 +76,14 @@ func (r *ArticleRepository) GetAllNotPosted(ctx context.Context) ([]models.Artic
 		}
 		articles = append(articles, article)
 	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return articles, nil
 }
-
 func (r *ArticleRepository) MarkAsPosted(ctx context.Context, article models.Article) error {
-	log.Printf("marking article as posted")
 	log.Print(article.ID)
 	_, err := r.db.Exec(ctx,
 		`UPDATE articles SET posted_at = $1::timestamp WHERE id = $2;`,
