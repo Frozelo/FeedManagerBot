@@ -78,7 +78,8 @@ func (f *Fetcher) processItems(ctx context.Context, items *[]models.Item) error 
 		item.Date = item.Date.UTC()
 
 		article := models.Article{
-			Title:       item.Title,
+			Title: item.Title,
+			// TODO implement source logic
 			SourceID:    1,
 			Link:        item.Link,
 			Categories:  item.Categories,

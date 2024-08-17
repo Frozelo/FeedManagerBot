@@ -52,6 +52,7 @@ func loadFeed(ctx context.Context, url string) (*rss.Feed, error) {
 			return
 		}
 		feedCh <- feed
+
 	}()
 
 	select {
@@ -61,5 +62,7 @@ func loadFeed(ctx context.Context, url string) (*rss.Feed, error) {
 		return nil, err
 	case feed := <-feedCh:
 		return feed, nil
+
 	}
+
 }

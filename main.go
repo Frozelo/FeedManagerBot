@@ -57,7 +57,7 @@ func main() {
 		botAPI,
 		userRepo,
 		articleRepo,
-		15*time.Second,
+		30*time.Minute,
 	)
 
 	go func(ctx context.Context) {

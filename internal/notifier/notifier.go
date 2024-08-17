@@ -58,39 +58,47 @@ func (n *Notifier) Notify(ctx context.Context) error {
 		return err
 	}
 	articleToSend := articles[0]
-	if err = n.Send(ctx, articleToSend); err != nil {
+
+	subscribers, err := n.userRepo.GetAllUsers(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err = n.Send(ctx, articleToSend, subscribers); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (n *Notifier) Send(ctx context.Context, article models.Article) error {
+func (n *Notifier) Send(ctx context.Context, article models.Article, subs []models.TgUser) error {
 	var wg sync.WaitGroup
-	subscribers, err := n.userRepo.GetAllUsers(ctx)
-	log.Printf("subscribers: %v", subscribers)
-	if err != nil {
-		return err
-	}
+	log.Printf("subscribers: %v", subs)
 
 	msg := fmt.Sprintf(
 		"*Title:* %s\n*Link:* [%s](%s)\n*Published At:* %s",
 		article.Title,
-		article.Title, // Здесь можно использовать другое значение, если нужно
+		article.Title,
 		article.Link,
-		article.PublishedAt.Format("2006-01-02 15:04:05"), // Форматирование даты
+		article.PublishedAt.Format("2006-01-02 15:04:05"),
 	)
 
-	for _, subscriber := range subscribers {
+	for _, subscriber := range subs {
 		wg.Add(1)
 		go func(userId int64) {
 			defer wg.Done()
-			log.Printf("Sending message to user %d", userId)
-			telegramMsg := tgbotapi.NewMessage(userId, msg)
-			telegramMsg.ParseMode = "Markdown"
-			if _, err := n.bot.Send(telegramMsg); err != nil {
-				log.Printf("[ERROR] failed to send message to user with such %v id", userId)
-				log.Printf("[ERROR] %s", err.Error())
+			// Super test stupid code (temporary)
+			userSource := make(map[int64]int64)
+			userSource[subscriber.TgId] = 2
+			if userSource[subscriber.TgId] == article.SourceID {
+				log.Printf("[INFO] sending message to user %d", userId)
+				telegramMsg := tgbotapi.NewMessage(userId, msg)
+				telegramMsg.ParseMode = "Markdown"
+				if _, err := n.bot.Send(telegramMsg); err != nil {
+					log.Printf("[ERROR] failed to send message to user with such %v id", userId)
+					log.Printf("[ERROR] %s", err.Error())
+				}
 			}
+
 		}(subscriber.TgId)
 	}
 
