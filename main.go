@@ -52,12 +52,14 @@ func main() {
 
 	userRepo := repository.NewUsersRepository(db)
 	articleRepo := repository.NewArticleRepository(db)
+	subsRepo := repository.NewSubscriberRepository(db)
 	rssFetcher := fetcher.NewFetcher(articleRepo, 1*time.Minute, []string{"test", "hey"})
 	ntfr := notifier.NewNotifier(
 		botAPI,
 		userRepo,
 		articleRepo,
-		30*time.Minute,
+		subsRepo,
+		30*time.Second,
 	)
 
 	go func(ctx context.Context) {

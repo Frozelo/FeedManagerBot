@@ -48,7 +48,7 @@ func (f *Fetcher) Start(ctx context.Context) error {
 }
 
 func (f *Fetcher) Fetch(ctx context.Context) error {
-	sources := []models.Source{{ID: 1, Name: "HABR", FeedURL: "https://habr.com/ru/rss/articles/"}}
+	sources := []models.Source{{ID: 2, Name: "HABR", FeedURL: "https://habr.com/ru/rss/articles/?fl=ru"}}
 	var wg sync.WaitGroup
 
 	for _, source := range sources {

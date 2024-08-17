@@ -21,15 +21,20 @@ type ArticleRepo interface {
 	GetAll(ctx context.Context) ([]models.Article, error)
 }
 
+type SubsRepo interface {
+	GetSourcesByUserID(ctx context.Context, userID int64) ([]models.Source, error)
+}
+
 type Notifier struct {
 	bot          *tgbotapi.BotAPI
 	articleRepo  ArticleRepo
 	userRepo     UserRepo
+	subsRepo     SubsRepo
 	sendInterval time.Duration
 }
 
-func NewNotifier(bot *tgbotapi.BotAPI, userRepo UserRepo, articles ArticleRepo, sendInterval time.Duration) *Notifier {
-	return &Notifier{bot: bot, userRepo: userRepo, articleRepo: articles, sendInterval: sendInterval}
+func NewNotifier(bot *tgbotapi.BotAPI, userRepo UserRepo, articles ArticleRepo, subs SubsRepo, sendInterval time.Duration) *Notifier {
+	return &Notifier{bot: bot, userRepo: userRepo, articleRepo: articles, subsRepo: subs, sendInterval: sendInterval}
 }
 
 func (n *Notifier) Start(ctx context.Context) error {
@@ -57,6 +62,9 @@ func (n *Notifier) Notify(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if len(articles) == 0 {
+		return nil
+	}
 	articleToSend := articles[0]
 
 	subscribers, err := n.userRepo.GetAllUsers(ctx)
@@ -71,44 +79,75 @@ func (n *Notifier) Notify(ctx context.Context) error {
 }
 
 func (n *Notifier) Send(ctx context.Context, article models.Article, subs []models.TgUser) error {
-	var wg sync.WaitGroup
-	log.Printf("subscribers: %v", subs)
+	msg := n.formatMessage(article)
 
-	msg := fmt.Sprintf(
-		"*Title:* %s\n*Link:* [%s](%s)\n*Published At:* %s",
-		article.Title,
-		article.Title,
-		article.Link,
-		article.PublishedAt.Format("2006-01-02 15:04:05"),
-	)
+	sendErrs := n.sendMessagesToAllUsers(ctx, article, subs, msg)
 
-	for _, subscriber := range subs {
-		wg.Add(1)
-		go func(userId int64) {
-			defer wg.Done()
-			// Super test stupid code (temporary)
-			userSource := make(map[int64]int64)
-			userSource[subscriber.TgId] = 2
-			if userSource[subscriber.TgId] == article.SourceID {
-				log.Printf("[INFO] sending message to user %d", userId)
-				telegramMsg := tgbotapi.NewMessage(userId, msg)
-				telegramMsg.ParseMode = "Markdown"
-				if _, err := n.bot.Send(telegramMsg); err != nil {
-					log.Printf("[ERROR] failed to send message to user with such %v id", userId)
-					log.Printf("[ERROR] %s", err.Error())
-				}
-			}
-
-		}(subscriber.TgId)
+	if len(sendErrs) > 0 {
+		return fmt.Errorf("encountered errors during message sending: %v", sendErrs)
 	}
 
-	wg.Wait()
-
-	// После успешной отправки всем пользователям, помечаем статью как отправленную
 	if err := n.articleRepo.MarkAsPosted(ctx, article); err != nil {
 		log.Printf("[ERROR] failed to mark article as posted: %s", err.Error())
 		return err
 	}
 
 	return nil
+}
+
+func (n *Notifier) formatMessage(article models.Article) string {
+	return fmt.Sprintf(
+		"*Title:* %s\n*Link:* [%s](%s)\n*Published At:* %s",
+		article.Title,
+		article.Title,
+		article.Link,
+		article.PublishedAt.Format("2006-01-02 15:04:05"),
+	)
+}
+
+func (n *Notifier) sendMessagesToAllUsers(ctx context.Context, article models.Article, subs []models.TgUser, msg string) []error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(subs))
+
+	for _, subscriber := range subs {
+		wg.Add(1)
+
+		go func(userId int64) {
+			defer wg.Done()
+			n.sendMessageToUser(ctx, userId, article, msg, errChan)
+		}(subscriber.TgId)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	var sendErrs []error
+	for err := range errChan {
+		if err != nil {
+			log.Println(err)
+			sendErrs = append(sendErrs, err)
+		}
+	}
+
+	return sendErrs
+}
+
+func (n *Notifier) sendMessageToUser(ctx context.Context, userId int64, article models.Article, msg string, errChan chan<- error) {
+	userSources, err := n.subsRepo.GetSourcesByUserID(ctx, userId)
+	if err != nil {
+		errChan <- fmt.Errorf("[ERROR] failed to find user subs for user %v id: %w", userId, err)
+		return
+	}
+
+	for _, source := range userSources {
+		if source.ID == article.SourceID {
+			telegramMsg := tgbotapi.NewMessage(userId, msg)
+			telegramMsg.ParseMode = "Markdown"
+
+			if _, err := n.bot.Send(telegramMsg); err != nil {
+				errChan <- fmt.Errorf("[ERROR] failed to send message to user with id %v: %w", userId, err)
+			}
+			break
+		}
+	}
 }
