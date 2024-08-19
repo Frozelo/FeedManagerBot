@@ -14,6 +14,18 @@ func NewSubscriberRepository(db *pgxpool.Pool) *SubscriptionRepository {
 	return &SubscriptionRepository{db: db}
 }
 
+func (r *SubscriptionRepository) Add(ctx context.Context, userId int64, sourceId int64) error {
+	query := `
+	INSERT INTO subscriptions (user_id, source_id) 
+	VALUES ($1, $2) 
+	ON CONFLICT (user_id, source_id) DO NOTHING`
+	_, err := r.db.Exec(ctx, query, userId, sourceId)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (r *SubscriptionRepository) GetSourcesByUserID(ctx context.Context, userID int64) ([]models.Source, error) {
 	query := `
         SELECT s.id, s.name, s.feed_url, s.priority, s.created_at

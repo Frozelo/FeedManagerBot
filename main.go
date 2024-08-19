@@ -61,7 +61,6 @@ func main() {
 		subsRepo,
 		5*time.Second,
 	)
-
 	go func(ctx context.Context) {
 		if err = rssFetcher.Start(ctx); err != nil {
 			if !errors.Is(err, context.Canceled) {
@@ -86,7 +85,7 @@ func main() {
 		select {
 		case update := <-updates:
 			updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			handleUpdate(updateCtx, update, botAPI, userRepo)
+			handleUpdate(updateCtx, update, botAPI, userRepo, subsRepo)
 			updateCancel()
 		case <-ctx.Done():
 			return
@@ -95,30 +94,47 @@ func main() {
 }
 
 // TODO Solve update problem. With true handling
-func handleUpdate(ctx context.Context, update tgbotapi.Update, bot *tgbotapi.BotAPI, userRepo *repository.UsersRepository) {
-	msg := tgbotapi.NewMessage(747067942, fmt.Sprintf("Got the new message from %v", update.Message.From.ID))
-	if err := userRepo.AddTgUser(ctx, models.TgUser{
-		TgId:     update.Message.From.ID,
-		Username: update.Message.From.UserName,
-	}); err != nil {
-		msg = tgbotapi.NewMessage(update.Message.From.ID, fmt.Sprintf("Error adding user: %v", err))
-		bot.Send(msg)
-	}
-
-	bot.Send(msg)
+func handleUpdate(
+	ctx context.Context,
+	update tgbotapi.Update,
+	bot *tgbotapi.BotAPI,
+	userRepo *repository.UsersRepository,
+	subsRepo *repository.SubscriptionRepository) {
 	defer func() {
 		if p := recover(); p != nil {
 			log.Printf("[ERROR] panic recovered: %v\n%s", p, string(debug.Stack()))
 		}
 	}()
 
-	if (update.Message == nil || !update.Message.IsCommand()) && update.CallbackQuery == nil {
-		log.Printf("[ERROR] callback query is nil: %v", update.Message)
-		return
+	if update.Message.Command() == "start" {
+		if err := userRepo.AddTgUser(ctx, models.TgUser{
+			TgId:     update.Message.From.ID,
+			Username: update.Message.From.UserName,
+		}); err != nil {
+			msg := tgbotapi.NewMessage(update.Message.From.ID, fmt.Sprintf("Error adding user: %v", err))
+			bot.Send(msg)
+		}
 	}
 
-	if !update.Message.IsCommand() {
-		return
+	// TODO Super stupid test code improve this
+	switch update.Message.Text {
+	case "1":
+		log.Printf("Im here!")
+		if err := subsRepo.Add(ctx, update.Message.From.ID, 1); err != nil {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Error adding subscriber: %v", err))
+			bot.Send(msg)
+
+		}
+	case "2":
+		log.Printf("Im here!")
+		if err := subsRepo.Add(ctx, update.Message.From.ID, 2); err != nil {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Error adding subscriber: %v", err))
+			bot.Send(msg)
+		}
+	default:
+		msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Invalid input"))
+		bot.Send(msg)
 	}
+
 	return
 }
