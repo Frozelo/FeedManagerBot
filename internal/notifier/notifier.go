@@ -67,6 +67,8 @@ func (n *Notifier) Notify(ctx context.Context) error {
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(subscribers))
+	mu := &sync.Mutex{}
+	articlesToSend := make(map[int64]models.Article)
 
 	for _, subscriber := range subscribers {
 		wg.Add(1)
@@ -82,7 +84,9 @@ func (n *Notifier) Notify(ctx context.Context) error {
 				return
 			}
 			articleToSend := articles[0]
-
+			mu.Lock()
+			articlesToSend[articleToSend.ID] = articleToSend
+			mu.Unlock()
 			if err = n.Send(ctx, articleToSend, subscriber); err != nil {
 				errChan <- err
 			}
@@ -100,6 +104,15 @@ func (n *Notifier) Notify(ctx context.Context) error {
 		}
 	}
 
+	for _, article := range articlesToSend {
+		log.Println("trying to mark article", article.ID)
+		if err := n.articleRepo.MarkAsPosted(ctx, article); err != nil {
+			log.Printf("[ERROR] failed to mark article as posted: %s", err.Error())
+			sendErrs = append(sendErrs, err)
+		}
+		log.Println("article marked", article.ID)
+	}
+
 	if len(sendErrs) > 0 {
 		return fmt.Errorf("encountered errors during notification: %v", sendErrs)
 	}
@@ -110,10 +123,7 @@ func (n *Notifier) Notify(ctx context.Context) error {
 func (n *Notifier) Send(ctx context.Context, article models.Article, subscriber models.TgUser) error {
 	msg := n.formatMessage(article)
 
-	err := n.sendMessageToUser(ctx, subscriber.TgId, article, msg)
-	if err != nil {
-		return err
-	}
+	log.Printf("Sending message: %v", msg)
 
 	return nil
 }
@@ -122,15 +132,11 @@ func (n *Notifier) sendMessageToUser(ctx context.Context, userId int64, article 
 	telegramMsg := tgbotapi.NewMessage(userId, msg)
 	telegramMsg.ParseMode = "Markdown"
 
-	if _, err := n.bot.Send(telegramMsg); err != nil {
-		return fmt.Errorf("[ERROR] failed to send message to user with id %v: %w", userId, err)
-	}
-
-	if err := n.articleRepo.MarkAsPosted(ctx, article); err != nil {
-		log.Printf("[ERROR] failed to mark article as posted: %s", err.Error())
+	_, err := n.bot.Send(telegramMsg)
+	if err != nil {
+		log.Printf("[ERROR] failed to send message to user %d: %s", userId, err.Error())
 		return err
 	}
-
 	return nil
 }
 

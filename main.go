@@ -13,7 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"os/signal"
+	"regexp"
 	"runtime/debug"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -117,22 +119,21 @@ func handleUpdate(
 	}
 
 	// TODO Super stupid test code improve this
-	switch update.Message.Text {
-	case "1":
-		log.Printf("Im here!")
-		if err := subsRepo.Add(ctx, update.Message.From.ID, 1); err != nil {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Error adding subscriber: %v", err))
+	var digitRegex = regexp.MustCompile(`^\d+$`)
+	if digitRegex.MatchString(update.Message.Text) {
+		sourceID, err := strconv.ParseInt(update.Message.Text, 10, 64)
+		if err != nil {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Error parsing number.")
 			bot.Send(msg)
+			return
+		}
 
-		}
-	case "2":
-		log.Printf("Im here!")
-		if err := subsRepo.Add(ctx, update.Message.From.ID, 2); err != nil {
+		if err := subsRepo.Add(ctx, update.Message.From.ID, sourceID); err != nil {
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Error adding subscriber: %v", err))
 			bot.Send(msg)
 		}
-	default:
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Invalid input"))
+	} else {
+		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Invalid input. Please enter a number.")
 		bot.Send(msg)
 	}
 
