@@ -16,8 +16,6 @@ func NewArticleRepository(db *pgxpool.Pool) *ArticleRepository {
 	return &ArticleRepository{db: db}
 }
 
-//TODO Fix problem with adding an article with id much more than real
-
 func (r *ArticleRepository) Add(ctx context.Context, article models.Article) error {
 	_, err := r.db.Exec(ctx,
 		`INSERT INTO articles (source_id, title, link, published_at)

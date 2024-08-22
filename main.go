@@ -3,19 +3,15 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	"github.com/Frozelo/FeedBackManagerBot/internal/bot"
 	"github.com/Frozelo/FeedBackManagerBot/internal/config"
 	"github.com/Frozelo/FeedBackManagerBot/internal/fetcher"
-	models "github.com/Frozelo/FeedBackManagerBot/internal/model"
 	"github.com/Frozelo/FeedBackManagerBot/internal/notifier"
 	"github.com/Frozelo/FeedBackManagerBot/internal/repository"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"os/signal"
-	"regexp"
-	"runtime/debug"
-	"strconv"
 	"syscall"
 	"time"
 )
@@ -38,14 +34,9 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	log.Printf("Connected to the database")
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-
-	updates := botAPI.GetUpdatesChan(u)
 
 	db, err := pgxpool.New(ctx, "postgres://admin:123123@localhost:5432/feedbot")
 	if err != nil {
@@ -53,6 +44,7 @@ func main() {
 	}
 
 	userRepo := repository.NewUsersRepository(db)
+	sourceRepo := repository.NewSourceRepository(db)
 	articleRepo := repository.NewArticleRepository(db)
 	subsRepo := repository.NewSubscriberRepository(db)
 	rssFetcher := fetcher.NewFetcher(articleRepo, 1*time.Minute, []string{"test", "hey"})
@@ -61,8 +53,24 @@ func main() {
 		userRepo,
 		articleRepo,
 		subsRepo,
-		5*time.Second,
+		30*time.Second,
 	)
+	feedBot := bot.New(botAPI)
+	feedBot.RegisterCmd(
+		"addsource",
+		bot.CmdAddSource(sourceRepo),
+	)
+
+	feedBot.RegisterCmd(
+		"listsources",
+		bot.CmdListSource(sourceRepo),
+	)
+
+	feedBot.RegisterCmd(
+		"start",
+		bot.CmdStart(userRepo),
+	)
+
 	go func(ctx context.Context) {
 		if err = rssFetcher.Start(ctx); err != nil {
 			if !errors.Is(err, context.Canceled) {
@@ -83,59 +91,8 @@ func main() {
 		}
 	}(ctx)
 
-	for {
-		select {
-		case update := <-updates:
-			updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			handleUpdate(updateCtx, update, botAPI, userRepo, subsRepo)
-			updateCancel()
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// TODO Solve update problem. With true handling
-func handleUpdate(
-	ctx context.Context,
-	update tgbotapi.Update,
-	bot *tgbotapi.BotAPI,
-	userRepo *repository.UsersRepository,
-	subsRepo *repository.SubscriptionRepository) {
-	defer func() {
-		if p := recover(); p != nil {
-			log.Printf("[ERROR] panic recovered: %v\n%s", p, string(debug.Stack()))
-		}
-	}()
-
-	if update.Message.Command() == "start" {
-		if err := userRepo.AddTgUser(ctx, models.TgUser{
-			TgId:     update.Message.From.ID,
-			Username: update.Message.From.UserName,
-		}); err != nil {
-			msg := tgbotapi.NewMessage(update.Message.From.ID, fmt.Sprintf("Error adding user: %v", err))
-			bot.Send(msg)
-		}
+	if err := feedBot.Start(ctx); err != nil {
+		log.Printf("[ERROR] failed to run botkit: %v", err)
 	}
 
-	// TODO Super stupid test code improve this
-	var digitRegex = regexp.MustCompile(`^\d+$`)
-	if digitRegex.MatchString(update.Message.Text) {
-		sourceID, err := strconv.ParseInt(update.Message.Text, 10, 64)
-		if err != nil {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Error parsing number.")
-			bot.Send(msg)
-			return
-		}
-
-		if err := subsRepo.Add(ctx, update.Message.From.ID, sourceID); err != nil {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Error adding subscriber: %v", err))
-			bot.Send(msg)
-		}
-	} else {
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Invalid input. Please enter a number.")
-		bot.Send(msg)
-	}
-
-	return
 }

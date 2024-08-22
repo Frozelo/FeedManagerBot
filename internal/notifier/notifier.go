@@ -122,13 +122,16 @@ func (n *Notifier) Notify(ctx context.Context) error {
 
 func (n *Notifier) Send(ctx context.Context, article models.Article, subscriber models.TgUser) error {
 	msg := n.formatMessage(article)
+	if err := n.sendMessageToUser(subscriber.TgId, msg); err != nil {
+		return err
+	}
 
 	log.Printf("Sending message: %v", msg)
 
 	return nil
 }
 
-func (n *Notifier) sendMessageToUser(ctx context.Context, userId int64, article models.Article, msg string) error {
+func (n *Notifier) sendMessageToUser(userId int64, msg string) error {
 	telegramMsg := tgbotapi.NewMessage(userId, msg)
 	telegramMsg.ParseMode = "Markdown"
 
