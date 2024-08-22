@@ -2,15 +2,18 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
 type Bot struct {
 	bot *tgbotapi.BotAPI
 	cmd map[string]ViewFunc
+	cb  map[string]CallBackFunc
 }
 
 func New(bot *tgbotapi.BotAPI) *Bot {
@@ -22,6 +25,13 @@ func (b *Bot) RegisterCmd(cmd string, viewFunc ViewFunc) {
 		b.cmd = make(map[string]ViewFunc)
 	}
 	b.cmd[cmd] = viewFunc
+}
+
+func (b *Bot) RegisterCallback(cmd string, callback CallBackFunc) {
+	if b.cb == nil {
+		b.cb = make(map[string]CallBackFunc)
+	}
+	b.cb[cmd] = callback
 }
 
 func (b *Bot) Start(ctx context.Context) error {
@@ -51,6 +61,10 @@ func (b *Bot) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 	if update.Message != nil {
 		b.handleMessage(ctx, update)
 	}
+
+	if update.CallbackQuery != nil {
+		b.handleCallback(ctx, update)
+	}
 }
 
 func (b *Bot) handleMessage(ctx context.Context, update tgbotapi.Update) {
@@ -66,7 +80,26 @@ func (b *Bot) handleMessage(ctx context.Context, update tgbotapi.Update) {
 	if err := view(ctx, b.bot, update); err != nil {
 		log.Printf("[ERROR] failed to execute view: %v", err)
 
-		if _, err := b.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Internal error")); err != nil {
+		if _, err := b.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("internal error: %s", err))); err != nil {
+			log.Printf("[ERROR] failed to send error message: %v", err)
+		}
+	}
+}
+
+func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
+	callbackData := update.CallbackQuery.Data
+	parts := strings.Split(callbackData, ":")
+	if len(parts) == 0 {
+		return
+	}
+	callbackFunc, ok := b.cb[parts[0]]
+	if !ok {
+		return
+	}
+
+	if err := callbackFunc(ctx, b.bot, update); err != nil {
+		log.Printf("[ERROR] failed to execute callback: %v", err)
+		if _, err := b.bot.Send(tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("internal error: %s", err))); err != nil {
 			log.Printf("[ERROR] failed to send error message: %v", err)
 		}
 	}

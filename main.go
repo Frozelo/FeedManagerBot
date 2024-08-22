@@ -71,6 +71,11 @@ func main() {
 		bot.CmdStart(userRepo),
 	)
 
+	feedBot.RegisterCallback(
+		"source_add",
+		bot.CallbackAddSource(subsRepo),
+	)
+
 	go func(ctx context.Context) {
 		if err = rssFetcher.Start(ctx); err != nil {
 			if !errors.Is(err, context.Canceled) {

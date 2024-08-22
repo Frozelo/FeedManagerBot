@@ -26,7 +26,7 @@ func (r *SourceRepository) Add(ctx context.Context, source models.Source) error 
 }
 
 func (r *SourceRepository) Sources(ctx context.Context) ([]models.Source, error) {
-	query := `SELECT name, feed_url, priority, created_at FROM sources`
+	query := `SELECT  id, name, feed_url, priority, created_at FROM sources`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func (r *SourceRepository) Sources(ctx context.Context) ([]models.Source, error)
 	var sources []models.Source
 	for rows.Next() {
 		var source models.Source
-		if err := rows.Scan(&source.Name, &source.FeedURL, &source.Priority, &source.CreatedAt); err != nil {
+		if err := rows.Scan(&source.ID, &source.Name, &source.FeedURL, &source.Priority, &source.CreatedAt); err != nil {
 			return nil, err
 		}
 		sources = append(sources, source)
