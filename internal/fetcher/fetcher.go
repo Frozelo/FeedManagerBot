@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+type SourceRepo interface {
+	Sources(ctx context.Context) ([]models.Source, error)
+}
+
 type ArticleRepo interface {
 	Add(ctx context.Context, article models.Article) error
 }
@@ -19,12 +23,13 @@ type Sourcer interface {
 }
 
 type Fetcher struct {
+	sourceRepo     SourceRepo
 	articleRepo    ArticleRepo
 	fetchInterval  time.Duration
 	filterKeywords []string
 }
 
-func NewFetcher(articleRepo ArticleRepo, interval time.Duration, filterKeywords []string) *Fetcher {
+func NewFetcher(sourcesRepo SourceRepo, articleRepo ArticleRepo, interval time.Duration, filterKeywords []string) *Fetcher {
 	return &Fetcher{articleRepo: articleRepo, fetchInterval: interval, filterKeywords: filterKeywords}
 }
 
@@ -48,10 +53,11 @@ func (f *Fetcher) Start(ctx context.Context) error {
 	}
 }
 
+// TODO work with keywords
 func (f *Fetcher) Fetch(ctx context.Context) error {
-	sources := []models.Source{
-		{ID: 1, Name: "HABR", FeedURL: "https://habr.com/ru/rss/articles/?fl=ru"},
-		{ID: 2, Name: "VC RU", FeedURL: "https://vc.ru/rss/all"},
+	sources, err := f.sourceRepo.Sources(ctx)
+	if err != nil {
+		return err
 	}
 	var wg sync.WaitGroup
 

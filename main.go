@@ -47,7 +47,7 @@ func main() {
 	sourceRepo := repository.NewSourceRepository(db)
 	articleRepo := repository.NewArticleRepository(db)
 	subsRepo := repository.NewSubscriberRepository(db)
-	rssFetcher := fetcher.NewFetcher(articleRepo, 1*time.Minute, []string{"test", "hey"})
+	rssFetcher := fetcher.NewFetcher(sourceRepo, articleRepo, 1*time.Minute, []string{"test", "hey"})
 	ntfr := notifier.NewNotifier(
 		botAPI,
 		userRepo,

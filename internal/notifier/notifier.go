@@ -89,7 +89,7 @@ func (n *Notifier) Notify(ctx context.Context) error {
 			mu.Lock()
 			articlesToSend[articleToSend.ID] = articleToSend
 			mu.Unlock()
-			if err = n.Send(articleToSend, subscriber); err != nil {
+			if err = n.send(articleToSend, subscriber); err != nil {
 				errChan <- err
 			}
 		}(subscriber.TgId)
@@ -105,14 +105,8 @@ func (n *Notifier) Notify(ctx context.Context) error {
 			sendErrs = append(sendErrs, err)
 		}
 	}
-
-	for _, article := range articlesToSend {
-		log.Println("trying to mark article", article.ID)
-		if err := n.articleRepo.MarkAsPosted(ctx, article); err != nil {
-			log.Printf("[ERROR] failed to mark article as posted: %s", err.Error())
-			sendErrs = append(sendErrs, err)
-		}
-		log.Println("article marked", article.ID)
+	if err := n.markArticleAsPosted(ctx, articlesToSend); err != nil {
+		sendErrs = append(sendErrs, err)
 	}
 
 	if len(sendErrs) > 0 {
@@ -122,7 +116,18 @@ func (n *Notifier) Notify(ctx context.Context) error {
 	return nil
 }
 
-func (n *Notifier) Send(article models.Article, subscriber models.TgUser) error {
+func (n *Notifier) markArticleAsPosted(ctx context.Context, articlesToSend map[int64]models.Article) error {
+	for _, article := range articlesToSend {
+		if err := n.articleRepo.MarkAsPosted(ctx, article); err != nil {
+			log.Printf("[ERROR] failed to mark article as posted: %s", err.Error())
+			return err
+		}
+		log.Println("article marked", article.ID)
+	}
+	return nil
+}
+
+func (n *Notifier) send(article models.Article, subscriber models.TgUser) error {
 	msg := n.formatMessage(article)
 	if err := n.sendMessageToUser(subscriber.TgId, msg); err != nil {
 		return err
