@@ -59,6 +59,7 @@ func (r *ArticleRepository) GetAllNotPostedByUserSources(ctx context.Context, us
 		FROM articles a
 		JOIN subscriptions s ON a.source_id = s.source_id
 		WHERE a.posted_at IS NULL AND s.user_id = $1
+		ORDER BY RANDOM()
 	`
 	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {

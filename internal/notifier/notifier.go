@@ -75,7 +75,9 @@ func (n *Notifier) Notify(ctx context.Context) error {
 
 		go func(userID int64) {
 			defer wg.Done()
+			// TODO Think with that 1 limit to send in
 			articles, err := n.articleRepo.GetAllNotPostedByUserSources(ctx, userID)
+			fmt.Println(articles)
 			if err != nil {
 				errChan <- err
 				return
@@ -87,7 +89,7 @@ func (n *Notifier) Notify(ctx context.Context) error {
 			mu.Lock()
 			articlesToSend[articleToSend.ID] = articleToSend
 			mu.Unlock()
-			if err = n.Send(ctx, articleToSend, subscriber); err != nil {
+			if err = n.Send(articleToSend, subscriber); err != nil {
 				errChan <- err
 			}
 		}(subscriber.TgId)
@@ -120,7 +122,7 @@ func (n *Notifier) Notify(ctx context.Context) error {
 	return nil
 }
 
-func (n *Notifier) Send(ctx context.Context, article models.Article, subscriber models.TgUser) error {
+func (n *Notifier) Send(article models.Article, subscriber models.TgUser) error {
 	msg := n.formatMessage(article)
 	if err := n.sendMessageToUser(subscriber.TgId, msg); err != nil {
 		return err
