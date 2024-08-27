@@ -30,7 +30,7 @@ type Fetcher struct {
 }
 
 func NewFetcher(sourcesRepo SourceRepo, articleRepo ArticleRepo, interval time.Duration, filterKeywords []string) *Fetcher {
-	return &Fetcher{articleRepo: articleRepo, fetchInterval: interval, filterKeywords: filterKeywords}
+	return &Fetcher{sourceRepo: sourcesRepo, articleRepo: articleRepo, fetchInterval: interval, filterKeywords: filterKeywords}
 }
 
 func (f *Fetcher) Start(ctx context.Context) error {
